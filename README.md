@@ -14,8 +14,23 @@ The final code and report has to be ready in your team's GitHub Repo by the 16th
 
 ## The challenge
 
-The challenge will be about text simplification. Details follow soon.
-<!-- https://tsar-workshop.github.io/shared-task/ -->
+The challenge is the [Shared Task](https://tsar-workshop.github.io/shared-task/) of the 2025 Fourth Workshop on Text Simplification, Accessibility and Readability that was hold alongside the EMNLP 2025 conference.
+
+The task consists of simplifying a given sentence for a specific CEFR reading level (A2 or B1) while preserving the original meaning as much as possible. The data consists of a statement, its simplified version and the target reading level.
+
+We will evaluate your approaches according to the Shared Task evaluation:
+
+- CEFR Compliance: A CEFR-level classifier will verify whether the simplified paragraph meets the specified target level.
+
+- Meaning Preservation: Semantic similarity between the source paragraph and the system output.
+
+- Similarity to References: Semantic similarity between the system output and references.
+
+The [evaluation script](./evaluation/tsar2025_evaluation_script.py) can be found in our repository in the `evaluation/` folder.
+
+You can find the [trial data](./data/tsar2025_trialdata.jsonl) in our repository in the `data/` folder. The test data will be provided in the end of the term. You will run your approaches on the test set and submit your results as JSON line files in your repository. 
+
+**Important:** You have to submit and discuss at least one approach using Decoder-Encoder Models (e.g. RNNs, LSTMs, T5, BART) and one approach using Large Language Models.
 
 ## Schedule
 
@@ -36,9 +51,18 @@ The challenge will be about text simplification. Details follow soon.
 
 ## Initial Setup
 
+## Text Simplification Datasets
+
+Overview: https://github.com/jantrienes/text-simplification-datasets
+- ASSET (also by Fernando Alva-Manchego): https://github.com/facebookresearch/asset
+
 ## Further Reading & Ressources
 
 - https://richardsieg.github.io/resources/
+- [Stanford Class - Natural Language Processing with Deep Learning](https://web.stanford.edu/class/cs224n/)
 - https://e2eml.school/transformers.html
 - https://jalammar.github.io/illustrated-transformer/
+- Build a large language model (from Scratch) - Sebastian Raschka
+- AI engineering: building applications with foundation models - Chip Huyen
+- Hands-On Large Language Models - Jay Alammar, Maarten Grootendorst
 

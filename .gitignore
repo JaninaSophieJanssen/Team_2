@@ -86,6 +86,7 @@ target/
 
 *.zip
 *.key
+*.pptx
 
 
 datensatz_vorbereitung.py*
@@ -93,3 +94,6 @@ DefaktS_Twitter_DS.jsonl
 *.model
 
 /.quarto/
+__marimo__/
+
+CLAUDE.md
