@@ -47,6 +47,13 @@ You can find the [trial data](./data/tsar2025_trialdata.jsonl) in our repository
 
 ## Teams
 
+- Team 1: Tom Konstantin Stefer, Ashwinkumar Ashok Kadam, Daniel Kern
+- Team 2: Janina Sophie Janssen, Tim Vossmerbaeumer, Kristian Boettjer
+- Team 3: Dongxin Wang, Tzu-Lun Yeh, Salman Tariq
+- Team 4: Thuy Dieu Linh Nguyen, Samaneh Ilchi, Beyza Simsek
+- Team 5: Soheil Shah, Konstantin Blokhin
+
+
 ## Initial Setup
 
 ## Text Simplification Datasets
