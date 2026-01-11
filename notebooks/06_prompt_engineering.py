@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.18.0"
+__generated_with = "0.19.2"
 app = marimo.App(width="full")
 
 
@@ -21,7 +21,8 @@ def _():
     # The env file needs:
     # GEMINI_API_KEY
     # GOOGLE_APPLICATION_CREDENTIALS (path to json)
-    return
+    print(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+    return (os,)
 
 
 @app.cell(hide_code=True)
@@ -143,6 +144,13 @@ def _(sentence_input):
 
 
 @app.cell
+def _(os):
+    print(os.getcwd())
+
+    return
+
+
+@app.cell
 def _(clear_prompt, model_selector, temperature_slider):
     from litellm import completion
 
@@ -150,7 +158,7 @@ def _(clear_prompt, model_selector, temperature_slider):
     clear_response = completion(
         model=f"vertex_ai/{model_selector.value}",
         messages=[{"role": "user", "content": clear_prompt}],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -229,7 +237,7 @@ def _(
             # Here is the user message
             {"role": "user", "content": f"Simplify: {sentence_input.value}"},
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -308,7 +316,7 @@ def _(completion, model_selector, temperature_slider, xml_prompt):
             },
             {"role": "user", "content": xml_prompt},
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -431,7 +439,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
             },
             {"role": "assistant", "content": "{"},  # Prefill the response
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -497,7 +505,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
             },
             {"role": "user", "content": zero_shot_prompt},
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -570,7 +578,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
                 "content": f"Simplify the following sentence: {sentence_input.value}",
             },
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -628,7 +636,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
             },
             {"role": "user", "content": f"Simplify: {sentence_input.value}"},
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -696,7 +704,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
     Let's think step by step about how to simplify it.""",
             },
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=5000,
@@ -759,7 +767,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
                 + sentence_input.value,
             },
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=5000,
@@ -815,7 +823,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
     Simplified version: [final output]""",
             },
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=5000,
@@ -899,7 +907,7 @@ def _(completion, model_selector, sentence_input, temperature_slider):
     Sentence: {sentence_input.value}""",
             },
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
@@ -1034,7 +1042,7 @@ def _(
                 "content": f"Simplify this sentence:\n\n{sentence_input.value}",
             },
         ],
-        vertex_project="chatbot-183407",
+        vertex_project="inner-radius-483716-p8",
         vertex_location="us-central1",
         temperature=temperature_slider.value,
         max_tokens=1024,
