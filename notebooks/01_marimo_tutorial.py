@@ -1,6 +1,14 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo>=0.19.0",
+#     "pyzmq>=27.1.0",
+# ]
+# ///
+
 import marimo
 
-__generated_with = "0.18.0"
+__generated_with = "0.19.2"
 app = marimo.App(width="medium")
 
 
@@ -151,7 +159,7 @@ def _(alt, length_stats, pd):
     )
 
     length_chart + diagonal_line
-    return diagonal_line, length_chart
+    return
 
 
 @app.cell
@@ -180,7 +188,7 @@ def _(alt, tsar_data):
     )
 
     cefr_chart
-    return cefr_chart, cefr_counts
+    return
 
 
 @app.cell
@@ -196,7 +204,7 @@ def _(alt, length_stats):
     )
 
     ratio_chart
-    return (ratio_chart,)
+    return
 
 
 @app.cell
