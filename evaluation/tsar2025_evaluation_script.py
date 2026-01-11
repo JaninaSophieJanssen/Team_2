@@ -6,8 +6,10 @@ from transformers import pipeline # IMPORTANT: Please ensure your transformers v
 import evaluate
 
 # ---------------- Config ----------------
-GOLD_FILE = "tsar2025_test.jsonl"   # gold file next to this script
-SUBMISSIONS_DIR = "submissions"     # folder with team subfolders
+GOLD_FILE = os.getenv("TSAR_GOLD_FILE", "../data/tsar2025_test.jsonl")   # gold file in data folder
+SUBMISSIONS_DIR = os.getenv("TSAR_SUBMISSIONS_DIR", "submissions")     # folder with team subfolders
+SUBMISSION_FILE = os.getenv("TSAR_SUBMISSION_FILE", None)               # optional: specific file to evaluate
+OUTPUT_FILE = os.getenv("TSAR_OUTPUT_FILE", "results.xlsx")             # output results file
 SEED = 42                           # for reproducibility
 BATCH_SIZE = 32                     # adjust for your GPU
 
@@ -141,8 +143,16 @@ results = []
 for team in team_dirs:
     team_path = os.path.join(SUBMISSIONS_DIR, team)
     run_files = sorted([f for f in os.listdir(team_path) if f.endswith(".jsonl")])
+
+    # Filter to specific submission file if specified
+    if SUBMISSION_FILE:
+        run_files = [f for f in run_files if f == SUBMISSION_FILE]
+
     if not run_files:
-        print(f"[warn] No .jsonl files in {team_path}")
+        if SUBMISSION_FILE:
+            print(f"[warn] Submission file '{SUBMISSION_FILE}' not found in {team_path}")
+        else:
+            print(f"[warn] No .jsonl files in {team_path}")
         continue
     for run in run_files:
         run_path = os.path.join(team_path, run)
@@ -181,5 +191,5 @@ for team in team_dirs:
 df = pd.DataFrame(results)
 print("\n=== Results ===")
 print(df.to_string(index=False))
-df.to_excel("results.xlsx", index=False)
-print("\nSaved: results.xlsx")
+df.to_excel(OUTPUT_FILE, index=False)
+print(f"\nSaved: {OUTPUT_FILE}")

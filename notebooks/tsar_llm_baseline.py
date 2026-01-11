@@ -79,7 +79,7 @@ def _(repo_root):
         test_data = []
 
     print(f"Loaded {len(trial_data)} trial examples, {len(test_data)} test examples")
-    return test_data, trial_data, trial_path
+    return test_data, test_path, trial_data, trial_path
 
 
 @app.cell
@@ -231,17 +231,31 @@ def _(completion, json, repo_root, submissions_dir, time):
         """Generate simplifications for a dataset and save to submission folder."""
         predictions = []
 
-        for i, item in enumerate(data):
+        # Group by original text to avoid duplicate API calls
+        # Since we generate both A2 and B1 in one call, we only need to process unique originals
+        original_to_items = {}
+        for item in data:
+            original_text = item["original"]
+            if original_text not in original_to_items:
+                original_to_items[original_text] = []
+            original_to_items[original_text].append(item)
+
+        unique_originals = list(original_to_items.keys())
+
+        for i, original_text in enumerate(unique_originals):
+            items_for_this_original = original_to_items[original_text]
+
             # Update status if provided
             if status_obj:
+                text_ids = [item['text_id'] for item in items_for_this_original]
                 status_obj.update(
-                    title=f"Processing {i+1}/{len(data)}: {item['text_id']}"
+                    title=f"Processing {i+1}/{len(unique_originals)}: {', '.join(text_ids)}"
                 )
 
-            # Build prompt
-            user_prompt = build_prompt_fn(item["original"])
+            # Build prompt (same for all items with this original)
+            user_prompt = build_prompt_fn(original_text)
 
-            # Call LLM (fixed vertex project/location)
+            # Call LLM once for this original text
             try:
                 response = completion(
                     model=f"vertex_ai/{model_name}",
@@ -256,29 +270,34 @@ def _(completion, json, repo_root, submissions_dir, time):
                     response_format=response_format,
                 )
 
-                # Extract simplified text based on target level
-                string_repsonse = response.choices[0].message.content
+                # Extract both A2 and B1 simplifications
+                string_response = response.choices[0].message.content
+                simplified_data = json.loads(string_response)
 
-                # Convert to dict (assume Pydantic v2)
-                simplified_data = json.loads(string_repsonse)
+                # Create predictions for all items that share this original
+                for item in items_for_this_original:
+                    target_level = item["target_cefr"].lower()
+                    simplified = simplified_data[f'simplified_{target_level}']
 
-                # Extract the correct level
-                target_level = item["target_cefr"].lower()
-                simplified = simplified_data[f'simplified_{target_level}']
+                    predictions.append(
+                        {
+                            "text_id": item["text_id"],
+                            "simplified": simplified,
+                        }
+                    )
 
             except Exception as e:
                 error = f"[ERROR: {e}]"
                 print(error)
-                break
+                # On error, add error entries for all affected items
+                for item in items_for_this_original:
+                    predictions.append(
+                        {
+                            "text_id": item["text_id"],
+                            "simplified": error,
+                        }
+                    )
                 time.sleep(1)
-
-
-            predictions.append(
-                {
-                    "text_id": item["text_id"],
-                    "simplified": simplified,
-                }
-            )
 
             time.sleep(0.1)  # Rate limiting
 
@@ -362,6 +381,64 @@ def _(mo, trial_data, trial_predictions):
     return
 
 
+@app.cell
+def _(mo, repo_root, submissions_dir):
+    import subprocess
+    import sys
+
+    def run_evaluation(gold_file_path, output_filename, submission_filename, button_value):
+        """
+        Shared function to run evaluation script.
+
+        Args:
+            gold_file_path: Path to gold standard file
+            output_filename: Name of output Excel file (e.g., "results_trial.xlsx")
+            submission_filename: Name of submission file to evaluate (e.g., "dev_trial.jsonl")
+            button_value: Button value to check if evaluation should run
+
+        Returns:
+            marimo markdown display object with results
+        """
+        if button_value and (submissions_dir / submission_filename).exists():
+            eval_script = repo_root / "evaluation" / "tsar2025_evaluation_script.py"
+
+            env = {
+                **dict(__import__("os").environ),
+                "TSAR_GOLD_FILE": str(gold_file_path),
+                "TSAR_SUBMISSIONS_DIR": str(submissions_dir.parent),
+                "TSAR_SUBMISSION_FILE": submission_filename,  # Only evaluate this specific file
+                "TSAR_OUTPUT_FILE": output_filename,
+            }
+
+            print(f"Running evaluation script: {eval_script}")
+            print(f"Gold file: {gold_file_path}")
+            print(f"Submissions dir: {submissions_dir.parent}")
+            print(f"Output file: {output_filename}")
+
+            with mo.status.spinner(title="Running evaluation (this may take a while)..."):
+                result = subprocess.run(
+                    [sys.executable, str(eval_script)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(repo_root / "evaluation"),
+                    env=env,
+                )
+                eval_output = result.stdout + "\n" + result.stderr
+
+            print(f"Return code: {result.returncode}")
+            print(f"Output length: {len(eval_output)}")
+
+            if eval_output.strip():
+                return mo.md(f"```\n{eval_output}\n```")
+            else:
+                return mo.md("*Evaluation completed but produced no output*")
+        elif button_value:
+            return mo.md(f"*No submission file found: {submission_filename}. Generate predictions first.*")
+        else:
+            return mo.md("*Click the run button to start evaluation.*")
+    return (run_evaluation,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -380,36 +457,14 @@ def _(mo):
 
 
 @app.cell
-def _(mo, repo_root, run_eval_button, submissions_dir, trial_path):
-    import subprocess
-    import sys
-
-    eval_output = ""
-
-    if run_eval_button.value and (submissions_dir / "dev_trial.jsonl").exists():
-        eval_script = repo_root / "evaluation" / "tsar2025_evaluation_script.py"
-
-        env = {
-            **dict(__import__("os").environ),
-            "TSAR_GOLD_FILE": str(trial_path),
-            "TSAR_SUBMISSIONS_DIR": str(submissions_dir.parent),
-        }
-
-        with mo.status.spinner(title="Running evaluation (this may take a while)..."):
-            result = subprocess.run(
-                [sys.executable, str(eval_script)],
-                capture_output=True,
-                text=True,
-                cwd=str(repo_root / "evaluation"),
-                env=env,
-            )
-            eval_output = result.stdout + "\n" + result.stderr
-
-        mo.md(f"```\n{eval_output}\n```")
-    elif run_eval_button.value:
-        mo.md("*No submission file found. Generate and save predictions first.*")
-    else:
-        mo.md("*Click 'Run Evaluation' after generating and saving predictions.*")
+def _(run_eval_button, run_evaluation, trial_path):
+    output_display = run_evaluation(
+        gold_file_path=trial_path,
+        output_filename="results_trial.xlsx",
+        submission_filename="dev_trial.jsonl",
+        button_value=run_eval_button.value,
+    )
+    output_display
     return
 
 
@@ -462,6 +517,35 @@ def _(
         print("No test data available")
     else:
         print("Click 'Generate Test Predictions' to run on test set")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Run Test Evaluation
+
+    Execute the evaluation script on test data.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    run_test_eval_button = mo.ui.run_button(label="Run Test Evaluation")
+    run_test_eval_button
+    return (run_test_eval_button,)
+
+
+@app.cell
+def _(run_evaluation, run_test_eval_button, test_path):
+    test_output_display = run_evaluation(
+        gold_file_path=test_path,
+        output_filename="results_test.xlsx",
+        submission_filename="final_test.jsonl",
+        button_value=run_test_eval_button.value,
+    )
+    test_output_display
     return
 
 
