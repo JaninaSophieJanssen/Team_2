@@ -160,48 +160,53 @@ def _(trial_data):
     - For B1: Use clear language, moderate sentence complexity, maintain flow
     - Keep all important facts, numbers, and key details from the original"""
 
-    def build_prompt(original_text: str) -> str:
-        # Load few-shot examples from trial data (data is already uppercased in loading cell)
-        a2_example = next((item for item in trial_data if item["target_cefr"] == "a2"), None)
-        b1_example = next((item for item in trial_data if item["target_cefr"] == "b1"), None)
+    def build_prompt(original_text: str, num_examples: int = 2) -> str:
+        # Build paired examples from trial data (A2 + B1 per original)
+        by_original = {}
+        for item in trial_data:
+            orig = item["original"]
+            entry = by_original.setdefault(orig, {})
+            entry[item["target_cefr"].lower()] = item["reference"]
 
-        if a2_example and b1_example:
-            examples = f"""Here are examples of text simplification for the same original text at different CEFR levels:
+        pairs = []
+        for orig, refs in by_original.items():
+            if "a2" in refs and "b1" in refs:
+                pairs.append({"original": orig, "a2": refs["a2"], "b1": refs["b1"]})
 
-    <example_1_a2>
-    <original>
-    {a2_example['original']}
-    </original>
-    <simplified>
-    {a2_example['reference']}
-    </simplified>
-    </example_1_a2>
+        examples = ""
+        if num_examples > 0 and pairs:
+            selected_pairs = pairs[:num_examples]
+            blocks = []
+            for idx, ex in enumerate(selected_pairs, start=1):
+                blocks.append(
+                    f"""<example_{idx}>
+    <original_text>
+    {ex['original']}
+    </original_text>
+    <simplified_a2>
+    {ex['a2']}
+    </simplified_a2>
+    <simplified_b1>
+    {ex['b1']}
+    </simplified_b1>
+    </example_{idx}>"""
+                )
 
-    <example_2_b1>
-    <original>
-    {b1_example['original']}
-    </original>
-    <simplified>
-    {b1_example['reference']}
-    </simplified>
-    </example_2_b1>
-
-    ---"""
-        else:
-            examples = ""
+            examples = (
+                "Here are examples of text simplification for the same original text "
+                "at different CEFR levels:\n\n"
+                + "\n\n".join(blocks)
+                + "\n\n---"
+            )
 
         return f"""{examples}
 
     Now simplify the following paragraph to BOTH CEFR levels (A2 and B1).
-    This helps you understand the differentiation between levels better.
+    Your response must be a single JSON object with the keys "simplified_a2" and "simplified_b1".
 
     <original_text>
     {original_text}
-    </original_text>
-
-    Provide both:
-    - simplified_a2: Simplified version at A2 level
-    - simplified_b1: Simplified version at B1 level"""
+    </original_text>"""
     return SYSTEM_PROMPT, SimplificationResponse, build_prompt
 
 
@@ -210,17 +215,21 @@ def _(repo_root):
     import json
     import time
     from litellm import completion
+    import instructor
+
+    instructor_client = instructor.from_litellm(completion)
 
     submissions_dir = repo_root / "evaluation" / "submissions" / "Team_2"
     submissions_dir.mkdir(parents=True, exist_ok=True)
-    return completion, json, submissions_dir, time
+    return instructor_client, json, submissions_dir, time
 
 
 @app.cell
-def _(completion, json, repo_root, submissions_dir, time):
+def _(instructor_client, json, repo_root, submissions_dir, time):
     def generate_predictions(
         data,
         model_name,
+        num_examples,
         temperature,
         system_prompt,
         build_prompt_fn,
@@ -253,12 +262,13 @@ def _(completion, json, repo_root, submissions_dir, time):
                 )
 
             # Build prompt (same for all items with this original)
-            user_prompt = build_prompt_fn(original_text)
-
+            user_prompt = build_prompt_fn(original_text, num_examples)
             # Call LLM once for this original text
             try:
-                response = completion(
+                # Use instructor for reliable structured output
+                simplified_data = instructor_client.chat.completions.create(
                     model=f"vertex_ai/{model_name}",
+                    response_model=response_format,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
@@ -267,17 +277,14 @@ def _(completion, json, repo_root, submissions_dir, time):
                     vertex_location="us-central1",
                     temperature=temperature,
                     max_tokens=2048,
-                    response_format=response_format,
+                    max_retries=3,
                 )
-
-                # Extract both A2 and B1 simplifications
-                string_response = response.choices[0].message.content
-                simplified_data = json.loads(string_response)
 
                 # Create predictions for all items that share this original
                 for item in items_for_this_original:
                     target_level = item["target_cefr"].lower()
-                    simplified = simplified_data[f'simplified_{target_level}']
+                    # instructor returns a Pydantic model
+                    simplified = getattr(simplified_data, f'simplified_{target_level}')
 
                     predictions.append(
                         {
@@ -289,15 +296,7 @@ def _(completion, json, repo_root, submissions_dir, time):
             except Exception as e:
                 error = f"[ERROR: {e}]"
                 print(error)
-                # On error, add error entries for all affected items
-                for item in items_for_this_original:
-                    predictions.append(
-                        {
-                            "text_id": item["text_id"],
-                            "simplified": error,
-                        }
-                    )
-                time.sleep(1)
+                break
 
             time.sleep(0.1)  # Rate limiting
 
@@ -312,6 +311,46 @@ def _(completion, json, repo_root, submissions_dir, time):
     return (generate_predictions,)
 
 
+@app.cell
+def _():
+    SHOT_LABELS = [(0, "zero"), (1, "one"), (2, "two")]
+    return (SHOT_LABELS,)
+
+
+app._unparsable_cell(
+    r"""
+    header = mo.md("## Single Trial Item Test (Eye Test)")
+
+
+    # Select first item for testing
+    test_orig = trial_data[0]["original"]
+
+
+    test_prompt = build_prompt(test_orig, num_examples=2)
+        # Use instructor for eye test
+    _res = instructor_client.chat.completions.create(
+        model=f"vertex_ai/{model_selector.value}",
+        response_model=SimplificationResponse,
+        mode=instructor.Mode.JSON
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": test_prompt},
+        ],
+        vertex_project="inner-radius-483716-p8",
+        vertex_location="us-central1",
+        temperature=temperature_slider.value,
+        max_tokens=2048,
+        max_retries=3,
+    )
+    print(_res)
+
+
+       
+    """,
+    name="_"
+)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -324,60 +363,46 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    run_trial_button = mo.ui.run_button(label="Generate Trial Predictions")
-    run_trial_button
-    return (run_trial_button,)
+    run_trial_multishot_button = mo.ui.run_button(
+        label="Generate Trial Predictions (0/1/2-shot)"
+    )
+    run_trial_multishot_button
+    return (run_trial_multishot_button,)
 
 
 @app.cell
 def _(
+    SHOT_LABELS,
     SYSTEM_PROMPT,
     SimplificationResponse,
     build_prompt,
     generate_predictions,
     mo,
     model_selector,
-    run_trial_button,
+    run_trial_multishot_button,
     temperature_slider,
     trial_data,
 ):
-    trial_predictions = []
+    trial_predictions_by_shot = {}
 
-    if run_trial_button.value:
-        with mo.status.spinner(title="Generating trial predictions...") as status:
-            trial_predictions = generate_predictions(
-                data=trial_data,
-                model_name=model_selector.value,
-                temperature=temperature_slider.value,
-                system_prompt=SYSTEM_PROMPT,
-                build_prompt_fn=build_prompt,
-                response_format=SimplificationResponse,
-                output_filename="dev_trial.jsonl",
-                status_obj=status,
-            )
+    if run_trial_multishot_button.value:
+        for trial_num_examples, trial_shot_label in SHOT_LABELS:
+            with mo.status.spinner(
+                title=f"Generating trial {trial_shot_label}-shot predictions..."
+            ) as trial_generation_status:
+                trial_predictions_by_shot[trial_shot_label] = generate_predictions(
+                    data=trial_data,
+                    model_name=model_selector.value,
+                    num_examples=trial_num_examples,
+                    temperature=temperature_slider.value,
+                    system_prompt=SYSTEM_PROMPT,
+                    build_prompt_fn=build_prompt,
+                    response_format=SimplificationResponse,
+                    output_filename=f"trial_data_{trial_shot_label}_shot.jsonl",
+                    status_obj=trial_generation_status,
+                )
     else:
-        print("Click 'Generate Trial Predictions' to run")
-    return (trial_predictions,)
-
-
-@app.cell
-def _(mo, trial_data, trial_predictions):
-    pred_map_trial = {p["text_id"]: p["simplified"] for p in trial_predictions}
-    preview_rows_trials = []
-    for item_pred in trial_data[:5]:
-        preview_rows_trials.append(
-            {
-                "text_id": item_pred["text_id"],
-                "target": item_pred["target_cefr"],
-                "original": item_pred["original"],
-                "simplified": pred_map_trial.get(item_pred["text_id"], ""),
-                "reference": item_pred["reference"],
-            }
-        )
-    preview_table_trial = mo.ui.table(preview_rows_trials, label="Preview (first 5 examples)")
-
-
-    preview_table_trial
+        print("Click 'Generate Trial Predictions (0/1/2-shot)' to run")
     return
 
 
@@ -451,20 +476,32 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    run_eval_button = mo.ui.run_button(label="Run Evaluation")
-    run_eval_button
-    return (run_eval_button,)
+    run_eval_multishot_button = mo.ui.run_button(
+        label="Run Evaluation (0/1/2-shot)"
+    )
+    run_eval_multishot_button
+    return (run_eval_multishot_button,)
 
 
 @app.cell
-def _(run_eval_button, run_evaluation, trial_path):
-    output_display = run_evaluation(
-        gold_file_path=trial_path,
-        output_filename="results_trial.xlsx",
-        submission_filename="dev_trial.jsonl",
-        button_value=run_eval_button.value,
-    )
-    output_display
+def _(SHOT_LABELS, mo, run_eval_multishot_button, run_evaluation, trial_path):
+    if run_eval_multishot_button.value:
+        trial_eval_outputs = []
+        for _, trial_eval_shot_label in SHOT_LABELS:
+            trial_eval_outputs.append(mo.md(f"### Trial {trial_eval_shot_label}-shot"))
+            trial_eval_outputs.append(
+                run_evaluation(
+                    gold_file_path=trial_path,
+                    output_filename=f"results_trial_{trial_eval_shot_label}_shot.xlsx",
+                    submission_filename=f"trial_data_{trial_eval_shot_label}_shot.jsonl",
+                    button_value=True,
+                )
+            )
+        trial_eval_display = mo.vstack(trial_eval_outputs)
+    else:
+        trial_eval_display = mo.md("*Click the run button to start evaluation.*")
+
+    trial_eval_display
     return
 
 
@@ -482,41 +519,51 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    run_test_button = mo.ui.run_button(label="Generate Test Predictions")
-    run_test_button
-    return (run_test_button,)
+    run_test_multishot_button = mo.ui.run_button(
+        label="Generate Test Predictions (0/1/2-shot)"
+    )
+    run_test_multishot_button
+    return (run_test_multishot_button,)
 
 
 @app.cell
 def _(
+    SHOT_LABELS,
     SYSTEM_PROMPT,
     SimplificationResponse,
     build_prompt,
     generate_predictions,
     mo,
     model_selector,
-    run_test_button,
+    run_test_multishot_button,
     temperature_slider,
     test_data,
 ):
-    test_predictions = []
+    test_predictions_by_shot = {}
 
-    if run_test_button.value and test_data:
-        with mo.status.spinner(title="Generating test predictions...") as test_status:
-            test_predictions = generate_predictions(
-                data=test_data,
-                model_name=model_selector.value,
-                temperature=temperature_slider.value,
-                system_prompt=SYSTEM_PROMPT,
-                build_prompt_fn=build_prompt,
-                response_format=SimplificationResponse,
-                output_filename="final_test.jsonl",
-                status_obj=test_status,
-            )
-    elif run_test_button.value:
+    if run_test_multishot_button.value and test_data:
+        for test_num_examples, test_shot_label in SHOT_LABELS:
+            print(f'Progres:{test_num_examples}')
+            if test_num_examples == 0:
+                continue
+            with mo.status.spinner(
+                title=f"Generating test {test_shot_label}-shot predictions..."
+            ) as test_generation_status:
+                test_predictions_by_shot[test_shot_label] = generate_predictions(
+                    data=test_data,
+                    model_name=model_selector.value,
+                    num_examples=test_num_examples,
+                    temperature=temperature_slider.value,
+                    system_prompt=SYSTEM_PROMPT,
+                    build_prompt_fn=build_prompt,
+                    response_format=SimplificationResponse,
+                    output_filename=f"test_data_{test_shot_label}_shot.jsonl",
+                    status_obj=test_generation_status,
+                )
+    elif run_test_multishot_button.value:
         print("No test data available")
     else:
-        print("Click 'Generate Test Predictions' to run on test set")
+        print("Click 'Generate Test Predictions (0/1/2-shot)' to run on test set")
     return
 
 
@@ -532,20 +579,38 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    run_test_eval_button = mo.ui.run_button(label="Run Test Evaluation")
-    run_test_eval_button
-    return (run_test_eval_button,)
+    run_test_eval_multishot_button = mo.ui.run_button(
+        label="Run Test Evaluation (0/1/2-shot)"
+    )
+    run_test_eval_multishot_button
+    return (run_test_eval_multishot_button,)
 
 
 @app.cell
-def _(run_evaluation, run_test_eval_button, test_path):
-    test_output_display = run_evaluation(
-        gold_file_path=test_path,
-        output_filename="results_test.xlsx",
-        submission_filename="final_test.jsonl",
-        button_value=run_test_eval_button.value,
-    )
-    test_output_display
+def _(
+    SHOT_LABELS,
+    mo,
+    run_evaluation,
+    run_test_eval_multishot_button,
+    test_path,
+):
+    if run_test_eval_multishot_button.value:
+        test_eval_outputs = []
+        for _, test_eval_shot_label in SHOT_LABELS:
+            test_eval_outputs.append(mo.md(f"### Test {test_eval_shot_label}-shot"))
+            test_eval_outputs.append(
+                run_evaluation(
+                    gold_file_path=test_path,
+                    output_filename=f"results_test_{test_eval_shot_label}_shot.xlsx",
+                    submission_filename=f"test_data_{test_eval_shot_label}_shot.jsonl",
+                    button_value=True,
+                )
+            )
+        test_eval_display = mo.vstack(test_eval_outputs)
+    else:
+        test_eval_display = mo.md("*Click the run button to start evaluation.*")
+
+    test_eval_display
     return
 
 
