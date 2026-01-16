@@ -13,7 +13,7 @@
 
 This is the GitHub Repository for the ANLP course in the winter term 2025/26. Here, you can find all lecture slides as well as the notebooks and code examples.
 This forked Repo is for team two.
-Our reports is found as a pdf, and our notebooks are saved xxxx
+Our reports is found as a pdf, and our notebooks are saved as seen above. 
 
 ## Requirements & Grading
 
