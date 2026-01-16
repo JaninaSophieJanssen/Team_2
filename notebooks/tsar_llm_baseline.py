@@ -130,7 +130,9 @@ def _(mo):
     mo.md(r"""
     ## Prompt Template
 
-    A strong baseline prompt using clear instructions, XML separation, and explicit CEFR-level targeting.
+    What could be done better:
+    1. Evaluation Cirterai 3. can be confusing for the model in zero shot as it does not get any exnample and might confuse the orginal_text with the example in a way
+    2. And XML tag which singifes here come the exmaples would also be good I guess. Otherwise it could have been benifical to exlcude hte index if i only give one example.
     """)
     return
 
@@ -277,7 +279,7 @@ def _(instructor_client, json, repo_root, submissions_dir, time):
                     vertex_location="us-central1",
                     temperature=temperature,
                     max_tokens=2048,
-                    max_retries=3,
+                    max_retries=5,
                 )
 
                 # Create predictions for all items that share this original
@@ -296,7 +298,7 @@ def _(instructor_client, json, repo_root, submissions_dir, time):
             except Exception as e:
                 error = f"[ERROR: {e}]"
                 print(error)
-                break
+
 
             time.sleep(0.1)  # Rate limiting
 
@@ -317,21 +319,28 @@ def _():
     return (SHOT_LABELS,)
 
 
-app._unparsable_cell(
-    r"""
-    header = mo.md("## Single Trial Item Test (Eye Test)")
+@app.cell
+def _(
+    SYSTEM_PROMPT,
+    SimplificationResponse,
+    build_prompt,
+    instructor_client,
+    mo,
+    model_selector,
+    temperature_slider,
+    trial_data,
+):
 
 
     # Select first item for testing
-    test_orig = trial_data[0]["original"]
+    trial_orig = trial_data[5]["original"]
+    examples = []
 
-
-    test_prompt = build_prompt(test_orig, num_examples=2)
-        # Use instructor for eye test
+    test_prompt = build_prompt(trial_orig, num_examples=0)
+    examples.append(mo.ui.text_area(value=test_prompt, label="Example Prompt", full_width=True)) 
     _res = instructor_client.chat.completions.create(
         model=f"vertex_ai/{model_selector.value}",
         response_model=SimplificationResponse,
-        mode=instructor.Mode.JSON
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": test_prompt},
@@ -342,13 +351,9 @@ app._unparsable_cell(
         max_tokens=2048,
         max_retries=3,
     )
-    print(_res)
-
-
-       
-    """,
-    name="_"
-)
+    examples.append(mo.ui.text_area(value=str(_res), label="Example Answer", full_width=True))
+    mo.vstack(examples)
+    return
 
 
 @app.cell(hide_code=True)
@@ -544,7 +549,7 @@ def _(
     if run_test_multishot_button.value and test_data:
         for test_num_examples, test_shot_label in SHOT_LABELS:
             print(f'Progres:{test_num_examples}')
-            if test_num_examples == 0:
+            if test_num_examples in [0,2]:
                 continue
             with mo.status.spinner(
                 title=f"Generating test {test_shot_label}-shot predictions..."
@@ -611,6 +616,39 @@ def _(
         test_eval_display = mo.md("*Click the run button to start evaluation.*")
 
     test_eval_display
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### Failed Samples
+    """)
+    return
+
+
+@app.cell
+def _(json, mo, submissions_dir, test_data):
+    # Get all expected IDs from the test set
+    expected_ids = {item["text_id"] for item in test_data}
+    missing_items = []
+
+    for file_path in submissions_dir.glob("test_data_*.jsonl"):
+        with open(file_path, "r", encoding="utf-8") as f:
+            actual_ids = {json.loads(line)["text_id"] for line in f if line.strip()}
+
+        missing = expected_ids - actual_ids
+        if missing:
+            print(f"File '{file_path.name}' is missing {len(missing)} IDs.")
+            original_texts = {
+                a["original"] for a in test_data if a["text_id"] in missing
+            }
+            for text in original_texts:
+                missing_items.append(
+                    mo.ui.text_area(value=text, label="Original Text", full_width=True)
+                )
+
+    mo.vstack(missing_items) if missing_items else None
     return
 
 
