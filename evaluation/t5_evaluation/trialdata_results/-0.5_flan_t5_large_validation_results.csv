@@ -1,0 +1,2 @@
+modelname,weighted_f1,adj_accuracy,rmse,meaningbert-orig,bertscore-orig,meaningbert-ref,bertscore-ref
+Our-Fine-Tuned-T5-Checkpoint,0.3487,0.775,1.1832,0.8091,0.9434,0.6739,0.8996
