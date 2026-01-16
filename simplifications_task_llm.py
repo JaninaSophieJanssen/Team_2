@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.2"
+__generated_with = "0.19.4"
 app = marimo.App(width="full")
 
 
@@ -16,7 +16,7 @@ def _():
     from pathlib import Path
     from dotenv import load_dotenv
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parent
     dotenv_path = repo_root / ".env"
     load_dotenv(dotenv_path=dotenv_path, override=False)
 
