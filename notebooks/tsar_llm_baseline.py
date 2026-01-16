@@ -130,9 +130,10 @@ def _(mo):
     mo.md(r"""
     ## Prompt Template
 
-    What could be done better:
-    1. Evaluation Cirterai 3. can be confusing for the model in zero shot as it does not get any exnample and might confuse the orginal_text with the example in a way
-    2. And XML tag which singifes here come the exmaples would also be good I guess. Otherwise it could have been benifical to exlcude hte index if i only give one example.
+    ### What could be improved:
+    1. Evaluation criterion 3 can confuse the model in a zero-shot setup, because without an example it may mix up the original_text with what should have been an example.
+
+    2. Using XML tags to mark example boundaries would likely work better than plain text. Also, indexing examples doesn’t make much sense when only a single example is provided.
     """)
     return
 
