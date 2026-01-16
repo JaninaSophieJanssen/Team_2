@@ -1,3 +1,14 @@
+# Relevant folder for the tasks:
+### Task 1:
+- simplification_task_t5.py
+- All files in evaluation/t5_evaluation
+
+### Task 2:
+- simplification_task_llm.py
+- All files in submissions/Team_2
+
+----
+
 # Advanced Natural Language Processing - The Road to LLMs - Winter Term 2025/26
 
 This is the GitHub Repository for the ANLP course in the winter term 2025/26. Here, you can find all lecture slides as well as the notebooks and code examples.
